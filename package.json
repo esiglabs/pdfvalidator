@@ -5,7 +5,8 @@
   "main": "build/index.js",
   "scripts": {
     "build": "babel src --compact=false --out-dir build --source-maps",
-    "generate-docs": "jsdoc --destination doc/ src/index.js"
+    "generate-docs": "jsdoc --destination doc/ src/index.js",
+    "postinstall": "npm run build"
   },
   "repository": {
     "type": "git",
