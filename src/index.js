@@ -240,7 +240,7 @@ export class PDFInfo {
 export class PDFValidator {
   /**
    * Load a PDF file from a buffer.
-   * @param {Buffer} buffer - The buffer containing the PDF file.
+   * @param {ArrayBuffer} buffer - The buffer containing the PDF file.
    */
   constructor(buffer) {
     /**
