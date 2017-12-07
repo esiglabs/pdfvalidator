@@ -1,6 +1,6 @@
 {
   "name": "pdfvalidator",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A signed PDF validator",
   "main": "build/index.js",
   "scripts": {
@@ -33,5 +33,8 @@
     "babel-cli": "latest",
     "babel-preset-es2015": "latest",
     "jsdoc": "3.5.5"
+  },
+  "browser": {
+    "./build/webcrypto.js": false
   }
 }

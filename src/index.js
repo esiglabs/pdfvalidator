@@ -7,11 +7,7 @@
 import * as pkijs from 'pkijs';
 import * as asn1js from 'asn1js';
 import * as pdfjs from './pdf.js';
-import WebCrypto from 'node-webcrypto-ossl';
-
-/* Use openssl webcrypto polyfill for node */
-const webcrypto = new WebCrypto();
-pkijs.setEngine('OpenSSL', webcrypto, webcrypto.subtle);
+import './webcrypto'
 
 /**
  * Extract the timestamp token from the unsigned attributes of the CMS
@@ -52,7 +48,7 @@ function extractTSToken(cmsSignedSimp) {
  * Verify the hash of a some CMS signed data.
  * @param {pkijs.SignedData} cmsSignedSimp - The CMS Signed Data structure
  * @param {ArrayBuffer} signedDataBuffer - The signed data.
- * @return {Promise.<boolean>} A promise that resolves to true if the hash is
+ * @return {Promise<boolean>} A promise that resolves to true if the hash is
  * correct, otherwise false.
  */
 function verifyCMSHash(cmsSignedSimp, signedDataBuffer) {
@@ -105,10 +101,10 @@ function verifyCMSHash(cmsSignedSimp, signedDataBuffer) {
  * Verify if a certificate chains to some trusted CAs.
  * @param {pkijs.Certificate} certificate - The certificate that will be
  * checked.
- * @param {Array.<pkijs.Certificate>} chain - Additional certificates in the
+ * @param {Array<pkijs.Certificate>} chain - Additional certificates in the
  * chain.
- * @param {Array.<pkijs.Certificate>} trustedCAs - The trusted CAs
- * @return {Promise.<boolean>} A promise that is resolved with a boolean value
+ * @param {Array<pkijs.Certificate>} trustedCAs - The trusted CAs
+ * @return {Promise<boolean>} A promise that is resolved with a boolean value
  * stating if the certificate was verified or not.
  */
 function verifyChain(certificate, chain, trustedCAs) {
@@ -244,12 +240,12 @@ export class PDFValidator {
    */
   constructor(buffer) {
     /**
-     * @type {Array.<pkijs.Certificate>}
+     * @type {Array<pkijs.Certificate>}
      * @description Trusted document signing CAs.
      */
     this.trustedSigningCAs = [];
     /**
-     * @type {Array.<pkijs.Certificate>}
+     * @type {Array<pkijs.Certificate>}
      * @description Trusted document timestamping CAs.
      */
     this.trustedTimestampingCAs = [];
@@ -326,7 +322,7 @@ export class PDFValidator {
 
   /**
    * Add certificates to the trusted signing certificates bundle.
-   * @param {Array.<pkijs.Certificate>} certificates - An array of the
+   * @param {Array<pkijs.Certificate>} certificates - An array of the
    * certificates to add.
    */
   addTrustedSigningCAs(certificates) {
@@ -338,7 +334,7 @@ export class PDFValidator {
 
   /**
    * Add certificates to the trusted timestamping certificates bundle.
-   * @param {Array.<pkijs.Certificate>} certificates - An array of the
+   * @param {Array<pkijs.Certificate>} certificates - An array of the
    * certificates to add.
    */
   addTrustedTimestampingCAs(certificates) {
@@ -350,7 +346,7 @@ export class PDFValidator {
 
   /**
    * Validate the PDF file.
-   * @return {Promise.<PDFInfo>} A promise that is resolved with a PDFInfo
+   * @return {Promise<PDFInfo>} A promise that is resolved with a PDFInfo
    * object containing the validation results.
    */
   validateDoc() {

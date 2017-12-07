@@ -25,19 +25,11 @@ var _pdf = require('./pdf.js');
 
 var pdfjs = _interopRequireWildcard(_pdf);
 
-var _nodeWebcryptoOssl = require('node-webcrypto-ossl');
-
-var _nodeWebcryptoOssl2 = _interopRequireDefault(_nodeWebcryptoOssl);
-
-function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+require('./webcrypto');
 
 function _interopRequireWildcard(obj) { if (obj && obj.__esModule) { return obj; } else { var newObj = {}; if (obj != null) { for (var key in obj) { if (Object.prototype.hasOwnProperty.call(obj, key)) newObj[key] = obj[key]; } } newObj.default = obj; return newObj; } }
 
 function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
-
-/* Use openssl webcrypto polyfill for node */
-var webcrypto = new _nodeWebcryptoOssl2.default();
-pkijs.setEngine('OpenSSL', webcrypto, webcrypto.subtle);
 
 /**
  * Extract the timestamp token from the unsigned attributes of the CMS
@@ -73,7 +65,7 @@ function extractTSToken(cmsSignedSimp) {
  * Verify the hash of a some CMS signed data.
  * @param {pkijs.SignedData} cmsSignedSimp - The CMS Signed Data structure
  * @param {ArrayBuffer} signedDataBuffer - The signed data.
- * @return {Promise.<boolean>} A promise that resolves to true if the hash is
+ * @return {Promise<boolean>} A promise that resolves to true if the hash is
  * correct, otherwise false.
  */
 function verifyCMSHash(cmsSignedSimp, signedDataBuffer) {
@@ -119,10 +111,10 @@ function verifyCMSHash(cmsSignedSimp, signedDataBuffer) {
  * Verify if a certificate chains to some trusted CAs.
  * @param {pkijs.Certificate} certificate - The certificate that will be
  * checked.
- * @param {Array.<pkijs.Certificate>} chain - Additional certificates in the
+ * @param {Array<pkijs.Certificate>} chain - Additional certificates in the
  * chain.
- * @param {Array.<pkijs.Certificate>} trustedCAs - The trusted CAs
- * @return {Promise.<boolean>} A promise that is resolved with a boolean value
+ * @param {Array<pkijs.Certificate>} trustedCAs - The trusted CAs
+ * @return {Promise<boolean>} A promise that is resolved with a boolean value
  * stating if the certificate was verified or not.
  */
 function verifyChain(certificate, chain, trustedCAs) {
@@ -268,18 +260,18 @@ var PDFInfo = exports.PDFInfo = function () {
 var PDFValidator = exports.PDFValidator = function () {
   /**
    * Load a PDF file from a buffer.
-   * @param {Buffer} buffer - The buffer containing the PDF file.
+   * @param {ArrayBuffer} buffer - The buffer containing the PDF file.
    */
   function PDFValidator(buffer) {
     _classCallCheck(this, PDFValidator);
 
     /**
-     * @type {Array.<pkijs.Certificate>}
+     * @type {Array<pkijs.Certificate>}
      * @description Trusted document signing CAs.
      */
     this.trustedSigningCAs = [];
     /**
-     * @type {Array.<pkijs.Certificate>}
+     * @type {Array<pkijs.Certificate>}
      * @description Trusted document timestamping CAs.
      */
     this.trustedTimestampingCAs = [];
@@ -350,7 +342,7 @@ var PDFValidator = exports.PDFValidator = function () {
 
   /**
    * Add certificates to the trusted signing certificates bundle.
-   * @param {Array.<pkijs.Certificate>} certificates - An array of the
+   * @param {Array<pkijs.Certificate>} certificates - An array of the
    * certificates to add.
    */
 
@@ -365,7 +357,7 @@ var PDFValidator = exports.PDFValidator = function () {
 
     /**
      * Add certificates to the trusted timestamping certificates bundle.
-     * @param {Array.<pkijs.Certificate>} certificates - An array of the
+     * @param {Array<pkijs.Certificate>} certificates - An array of the
      * certificates to add.
      */
 
@@ -379,7 +371,7 @@ var PDFValidator = exports.PDFValidator = function () {
 
     /**
      * Validate the PDF file.
-     * @return {Promise.<PDFInfo>} A promise that is resolved with a PDFInfo
+     * @return {Promise<PDFInfo>} A promise that is resolved with a PDFInfo
      * object containing the validation results.
      */
 
