@@ -1,11 +1,12 @@
 {
   "name": "pdfvalidator",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "A signed PDF validator",
   "main": "build/index.js",
   "scripts": {
     "build": "babel src --compact=false --out-dir build --source-maps",
     "generate-docs": "jsdoc --destination doc/ src/index.js",
+    "lint": "eslint src",
     "postinstall": "npm run build"
   },
   "repository": {

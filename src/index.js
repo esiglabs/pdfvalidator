@@ -10,6 +10,22 @@ import * as pdfjs from './pdf.js';
 import './webcrypto'
 
 /**
+  * A trust store.
+  * @typedef {Object} TrustStore
+  * @property {string} name - The name of the trust store.
+  * @property {Array<pkijs.Certificate>} certificates - All the certificates
+  * contained in the trust store.
+  */
+
+/**
+ * Trust store verification status.
+ * @typedef {Object} TrustStoreStatus
+ * @property {string} name - The name of the trust store.
+ * @property {boolean} status - True if the certificate chains to this trust
+ * store, false otherwise.
+ */
+
+/**
  * Extract the timestamp token from the unsigned attributes of the CMS
  * signed data.
  * @param {pkijs.SignedData} cmsSignedSimp - The CMS signed data.
@@ -163,10 +179,10 @@ export class PDFInfo {
      */
     this.hashAlgorithm = '';
     /**
-     * @type {boolean}
+     * @type {Array<TrustStoreStatus>}
      * @description Signer certificate chains to a trusted signing CA.
      */
-    this.signerVerified = false;
+    this.signerVerified = [];
     /**
      * @type {boolean}
      * @description A timestamped PDF file.
@@ -178,11 +194,11 @@ export class PDFInfo {
      */
     this.tsVerified = false;
     /**
-     * @type {boolean}
+     * @type {Array<TrustStoreStatus>}
      * @description The certificate of the timestamp chains to a trusted
      * timestamping CA.
      */
-    this.tsCertVerified = false;
+    this.tsCertVerified = [];
     /**
      * @type {pkijs.Certificate}
      * @description The signer's certificate.
@@ -213,18 +229,36 @@ export class PDFInfo {
   }
 
   /**
-   * Check if the signer has been verified. If the file is timestamped, then
-   * the timestamp signer will also be checked.
+   * Check if the signer has been verified against a truststore. If the file is
+   * timestamped, then the timestamp signer will also be checked against another
+   * truststore.
+   * @param {string} signingTruststore - The name of the signing truststore.
+   * @param {string} timestampingTruststore - The name of the timestamping
+   * truststore.
+   * @return {boolean} True if the file was verified against both truststores,
+   * false otherwise.
    */
-  get isSignersVerified() {
+  isSignersVerified(signingTruststore, timestampingTruststore) {
     if(!this.isValid || !this.isSigned)
       return false;
 
-    if(!this.signerVerified)
+    let verified = false;
+    this.signerVerified.forEach(signer => {
+      if(signer.name === signingTruststore)
+        verified = signer.status;
+    });
+    if(verified === false)
       return false;
 
-    if(this.hasTS && !this.tsCertVerified)
-      return false;
+    if(this.hasTS) {
+      verified = false;
+      this.tsCertVerified.forEach(signer => {
+        if(signer.name === timestampingTruststore)
+          verified = signer.status;
+      });
+      if(verified === false)
+        return false;
+    }
 
     return true;
   }
@@ -240,12 +274,12 @@ export class PDFValidator {
    */
   constructor(buffer) {
     /**
-     * @type {Array<pkijs.Certificate>}
+     * @type {Array<TrustStore>}
      * @description Trusted document signing CAs.
      */
     this.trustedSigningCAs = [];
     /**
-     * @type {Array<pkijs.Certificate>}
+     * @type {Array<TrustStore>}
      * @description Trusted document timestamping CAs.
      */
     this.trustedTimestampingCAs = [];
@@ -265,7 +299,9 @@ export class PDFValidator {
      */
     this.pdfInfo = new PDFInfo();
 
-    const pdf = new pdfjs.PDFJS.PDFDocument(null, new Uint8Array(buffer), null);
+    const bufferView = new Uint8Array(buffer);
+
+    const pdf = new pdfjs.PDFJS.PDFDocument(null, bufferView, null);
 
     try {
       pdf.parseStartXRef();
@@ -312,36 +348,58 @@ export class PDFValidator {
 
     let count = 0;
     for(let i = byteRange[0]; i < (byteRange[0] + byteRange[1]); i++, count++)
-      signedDataView[count] = buffer[i];
+      signedDataView[count] = bufferView[i];
 
     for(let j = byteRange[2]; j < (byteRange[2] + byteRange[3]); j++, count++)
-      signedDataView[count] = buffer[j];
+      signedDataView[count] = bufferView[j];
 
     this.pdfInfo.isSigned = true;
   }
 
   /**
-   * Add certificates to the trusted signing certificates bundle.
-   * @param {Array<pkijs.Certificate>} certificates - An array of the
-   * certificates to add.
+   * Add a trust store to the document signing trust stores.
+   * @param {TrustStore} truststore - The trust store to add.
    */
-  addTrustedSigningCAs(certificates) {
-    if(!(certificates instanceof Array))
-      return;
-
-    this.trustedSigningCAs = this.trustedSigningCAs.concat(certificates);
+  addSigningTruststore(truststore) {
+    this.trustedSigningCAs.push(truststore);
   }
 
   /**
-   * Add certificates to the trusted timestamping certificates bundle.
-   * @param {Array<pkijs.Certificate>} certificates - An array of the
-   * certificates to add.
+   * Remove a trust store from the document signing trust stores by name.
+   * @param {string} name - The name of the trust store to remove.
    */
-  addTrustedTimestampingCAs(certificates) {
-    if(!(certificates instanceof Array))
-      return;
+  removeSigningTruststore(name) {
+    let idx;
 
-    this.trustedTimestampingCAs = this.trustedTimestampingCAs.concat(certificates);
+    for(idx = 0; idx < this.trustedSigningCAs.length; idx++) {
+      if(this.trustedSigningCAs[idx].name === name) {
+        this.trustedSigningCAs.splice(idx, 1);
+        idx--;
+      }
+    }
+  }
+
+  /**
+   * Add a trust store to the timestamping trust stores.
+   * @param {TrustStore} truststore - The trust store to add.
+   */
+  addTimestampingTruststore(truststore) {
+    this.trustedTimestampingCAs.push(truststore);
+  }
+
+  /**
+   * Remove a trust store from the document signing trust stores by name.
+   * @param {string} name - The name of the trust store to remove.
+   */
+  removeTimestampingTruststore(name) {
+    let idx;
+
+    for(idx = 0; idx < this.trustedTimestampingCAs.length; idx++) {
+      if(this.trustedTimestampingCAs[idx].name === name) {
+        this.trustedTimestampingCAs.splice(idx, 1);
+        idx--;
+      }
+    }
   }
 
   /**
@@ -349,7 +407,7 @@ export class PDFValidator {
    * @return {Promise<PDFInfo>} A promise that is resolved with a PDFInfo
    * object containing the validation results.
    */
-  validateDoc() {
+  validate() {
     let sequence = Promise.resolve();
 
     if((this.pdfInfo.isValid === false) || (this.pdfInfo.isSigned === false))
@@ -358,7 +416,6 @@ export class PDFValidator {
     sequence = sequence.then(() => this.cmsSignedSimp.verify({
       signer: 0,
       data: this.signedDataBuffer,
-      trustedCerts: this.trustedSigningCAs,
       checkChain: false,
       extendedMode: true
     })).then(result => {
@@ -367,10 +424,17 @@ export class PDFValidator {
     }, result => {
       this.pdfInfo.sigVerified = false;
       this.pdfInfo.cert = result.signerCertificate;
-    }).then(() => verifyChain(this.pdfInfo.cert,
-      this.cmsSignedSimp.certificates, this.trustedSigningCAs)
-    ).then(result => {
-      this.pdfInfo.signerVerified = result;
+    });
+
+    this.trustedSigningCAs.forEach(truststore => {
+      sequence = sequence.then(() => verifyChain(this.pdfInfo.cert,
+        this.cmsSignedSimp.certificates, truststore.certificates)
+      ).then(result => {
+        this.pdfInfo.signerVerified.push({
+          name: truststore.name,
+          status: result
+        });
+      });
     });
 
     if('signedAttrs' in this.cmsSignedSimp.signerInfos[0]) {
@@ -397,7 +461,6 @@ export class PDFValidator {
             signer: 0,
             data: this.cmsSignedSimp.signerInfos[0].signature.valueBlock
               .valueHex,
-            trustedCerts: this.trustedTimestampingCAs,
             checkChain: false,
             extendedMode: true
           })).then(result => {
@@ -406,11 +469,17 @@ export class PDFValidator {
           }, result => {
             this.pdfInfo.tsVerified = false;
             this.pdfInfo.tsCert = result.signerCertificate;
-          }).then(() => {
-            return verifyChain(this.pdfInfo.tsCert, tsSigned.certificates,
-              this.trustedTimestampingCAs)
-          }).then(result => {
-            this.pdfInfo.tsCertVerified = result;
+          });
+
+          this.trustedTimestampingCAs.forEach(truststore => {
+            sequence = sequence.then(() => verifyChain(this.pdfInfo.tsCert,
+              tsSigned.certificates, truststore.certificates)
+            ).then(result => {
+              this.pdfInfo.tsCertVerified.push({
+                name: truststore.name,
+                status: result
+              });
+            });
           });
         }
       }

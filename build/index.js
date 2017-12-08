@@ -32,6 +32,22 @@ function _interopRequireWildcard(obj) { if (obj && obj.__esModule) { return obj;
 function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
 
 /**
+  * A trust store.
+  * @typedef {Object} TrustStore
+  * @property {string} name - The name of the trust store.
+  * @property {Array<pkijs.Certificate>} certificates - All the certificates
+  * contained in the trust store.
+  */
+
+/**
+ * Trust store verification status.
+ * @typedef {Object} TrustStoreStatus
+ * @property {string} name - The name of the trust store.
+ * @property {boolean} status - True if the certificate chains to this trust
+ * store, false otherwise.
+ */
+
+/**
  * Extract the timestamp token from the unsigned attributes of the CMS
  * signed data.
  * @param {pkijs.SignedData} cmsSignedSimp - The CMS signed data.
@@ -175,10 +191,10 @@ var PDFInfo = exports.PDFInfo = function () {
      */
     this.hashAlgorithm = '';
     /**
-     * @type {boolean}
+     * @type {Array<TrustStoreStatus>}
      * @description Signer certificate chains to a trusted signing CA.
      */
-    this.signerVerified = false;
+    this.signerVerified = [];
     /**
      * @type {boolean}
      * @description A timestamped PDF file.
@@ -190,11 +206,11 @@ var PDFInfo = exports.PDFInfo = function () {
      */
     this.tsVerified = false;
     /**
-     * @type {boolean}
+     * @type {Array<TrustStoreStatus>}
      * @description The certificate of the timestamp chains to a trusted
      * timestamping CA.
      */
-    this.tsCertVerified = false;
+    this.tsCertVerified = [];
     /**
      * @type {pkijs.Certificate}
      * @description The signer's certificate.
@@ -214,6 +230,39 @@ var PDFInfo = exports.PDFInfo = function () {
 
 
   _createClass(PDFInfo, [{
+    key: 'isSignersVerified',
+
+
+    /**
+     * Check if the signer has been verified against a truststore. If the file is
+     * timestamped, then the timestamp signer will also be checked against another
+     * truststore.
+     * @param {string} signingTruststore - The name of the signing truststore.
+     * @param {string} timestampingTruststore - The name of the timestamping
+     * truststore.
+     * @return {boolean} True if the file was verified against both truststores,
+     * false otherwise.
+     */
+    value: function isSignersVerified(signingTruststore, timestampingTruststore) {
+      if (!this.isValid || !this.isSigned) return false;
+
+      var verified = false;
+      this.signerVerified.forEach(function (signer) {
+        if (signer.name === signingTruststore) verified = signer.status;
+      });
+      if (verified === false) return false;
+
+      if (this.hasTS) {
+        verified = false;
+        this.tsCertVerified.forEach(function (signer) {
+          if (signer.name === timestampingTruststore) verified = signer.status;
+        });
+        if (verified === false) return false;
+      }
+
+      return true;
+    }
+  }, {
     key: 'isValidSigned',
     get: function get() {
       return this.isValid & this.isSigned & this.sigVerified & this.hashVerified;
@@ -228,23 +277,6 @@ var PDFInfo = exports.PDFInfo = function () {
     key: 'isValidSignedTimestamped',
     get: function get() {
       return this.isValid & this.isSigned & this.sigVerified & this.hashVerified & this.hasTS & this.tsVerified;
-    }
-
-    /**
-     * Check if the signer has been verified. If the file is timestamped, then
-     * the timestamp signer will also be checked.
-     */
-
-  }, {
-    key: 'isSignersVerified',
-    get: function get() {
-      if (!this.isValid || !this.isSigned) return false;
-
-      if (!this.signerVerified) return false;
-
-      if (this.hasTS && !this.tsCertVerified) return false;
-
-      return true;
     }
   }]);
 
@@ -266,12 +298,12 @@ var PDFValidator = exports.PDFValidator = function () {
     _classCallCheck(this, PDFValidator);
 
     /**
-     * @type {Array<pkijs.Certificate>}
+     * @type {Array<TrustStore>}
      * @description Trusted document signing CAs.
      */
     this.trustedSigningCAs = [];
     /**
-     * @type {Array<pkijs.Certificate>}
+     * @type {Array<TrustStore>}
      * @description Trusted document timestamping CAs.
      */
     this.trustedTimestampingCAs = [];
@@ -291,7 +323,9 @@ var PDFValidator = exports.PDFValidator = function () {
      */
     this.pdfInfo = new PDFInfo();
 
-    var pdf = new pdfjs.PDFJS.PDFDocument(null, new Uint8Array(buffer), null);
+    var bufferView = new Uint8Array(buffer);
+
+    var pdf = new pdfjs.PDFJS.PDFDocument(null, bufferView, null);
 
     try {
       pdf.parseStartXRef();
@@ -334,39 +368,69 @@ var PDFValidator = exports.PDFValidator = function () {
 
     var count = 0;
     for (var _i = byteRange[0]; _i < byteRange[0] + byteRange[1]; _i++, count++) {
-      signedDataView[count] = buffer[_i];
+      signedDataView[count] = bufferView[_i];
     }for (var j = byteRange[2]; j < byteRange[2] + byteRange[3]; j++, count++) {
-      signedDataView[count] = buffer[j];
+      signedDataView[count] = bufferView[j];
     }this.pdfInfo.isSigned = true;
   }
 
   /**
-   * Add certificates to the trusted signing certificates bundle.
-   * @param {Array<pkijs.Certificate>} certificates - An array of the
-   * certificates to add.
+   * Add a trust store to the document signing trust stores.
+   * @param {TrustStore} truststore - The trust store to add.
    */
 
 
   _createClass(PDFValidator, [{
-    key: 'addTrustedSigningCAs',
-    value: function addTrustedSigningCAs(certificates) {
-      if (!(certificates instanceof Array)) return;
-
-      this.trustedSigningCAs = this.trustedSigningCAs.concat(certificates);
+    key: 'addSigningTruststore',
+    value: function addSigningTruststore(truststore) {
+      this.trustedSigningCAs.push(truststore);
     }
 
     /**
-     * Add certificates to the trusted timestamping certificates bundle.
-     * @param {Array<pkijs.Certificate>} certificates - An array of the
-     * certificates to add.
+     * Remove a trust store from the document signing trust stores by name.
+     * @param {string} name - The name of the trust store to remove.
      */
 
   }, {
-    key: 'addTrustedTimestampingCAs',
-    value: function addTrustedTimestampingCAs(certificates) {
-      if (!(certificates instanceof Array)) return;
+    key: 'removeSigningTruststore',
+    value: function removeSigningTruststore(name) {
+      var idx = void 0;
 
-      this.trustedTimestampingCAs = this.trustedTimestampingCAs.concat(certificates);
+      for (idx = 0; idx < this.trustedSigningCAs.length; idx++) {
+        if (this.trustedSigningCAs[idx].name === name) {
+          this.trustedSigningCAs.splice(idx, 1);
+          idx--;
+        }
+      }
+    }
+
+    /**
+     * Add a trust store to the timestamping trust stores.
+     * @param {TrustStore} truststore - The trust store to add.
+     */
+
+  }, {
+    key: 'addTimestampingTruststore',
+    value: function addTimestampingTruststore(truststore) {
+      this.trustedTimestampingCAs.push(truststore);
+    }
+
+    /**
+     * Remove a trust store from the document signing trust stores by name.
+     * @param {string} name - The name of the trust store to remove.
+     */
+
+  }, {
+    key: 'removeTimestampingTruststore',
+    value: function removeTimestampingTruststore(name) {
+      var idx = void 0;
+
+      for (idx = 0; idx < this.trustedTimestampingCAs.length; idx++) {
+        if (this.trustedTimestampingCAs[idx].name === name) {
+          this.trustedTimestampingCAs.splice(idx, 1);
+          idx--;
+        }
+      }
     }
 
     /**
@@ -376,8 +440,8 @@ var PDFValidator = exports.PDFValidator = function () {
      */
 
   }, {
-    key: 'validateDoc',
-    value: function validateDoc() {
+    key: 'validate',
+    value: function validate() {
       var _this = this;
 
       var sequence = Promise.resolve();
@@ -390,7 +454,6 @@ var PDFValidator = exports.PDFValidator = function () {
         return _this.cmsSignedSimp.verify({
           signer: 0,
           data: _this.signedDataBuffer,
-          trustedCerts: _this.trustedSigningCAs,
           checkChain: false,
           extendedMode: true
         });
@@ -400,10 +463,17 @@ var PDFValidator = exports.PDFValidator = function () {
       }, function (result) {
         _this.pdfInfo.sigVerified = false;
         _this.pdfInfo.cert = result.signerCertificate;
-      }).then(function () {
-        return verifyChain(_this.pdfInfo.cert, _this.cmsSignedSimp.certificates, _this.trustedSigningCAs);
-      }).then(function (result) {
-        _this.pdfInfo.signerVerified = result;
+      });
+
+      this.trustedSigningCAs.forEach(function (truststore) {
+        sequence = sequence.then(function () {
+          return verifyChain(_this.pdfInfo.cert, _this.cmsSignedSimp.certificates, truststore.certificates);
+        }).then(function (result) {
+          _this.pdfInfo.signerVerified.push({
+            name: truststore.name,
+            status: result
+          });
+        });
       });
 
       if ('signedAttrs' in this.cmsSignedSimp.signerInfos[0]) {
@@ -428,7 +498,6 @@ var PDFValidator = exports.PDFValidator = function () {
               return tsSigned.verify({
                 signer: 0,
                 data: _this.cmsSignedSimp.signerInfos[0].signature.valueBlock.valueHex,
-                trustedCerts: _this.trustedTimestampingCAs,
                 checkChain: false,
                 extendedMode: true
               });
@@ -438,10 +507,17 @@ var PDFValidator = exports.PDFValidator = function () {
             }, function (result) {
               _this.pdfInfo.tsVerified = false;
               _this.pdfInfo.tsCert = result.signerCertificate;
-            }).then(function () {
-              return verifyChain(_this.pdfInfo.tsCert, tsSigned.certificates, _this.trustedTimestampingCAs);
-            }).then(function (result) {
-              _this.pdfInfo.tsCertVerified = result;
+            });
+
+            this.trustedTimestampingCAs.forEach(function (truststore) {
+              sequence = sequence.then(function () {
+                return verifyChain(_this.pdfInfo.tsCert, tsSigned.certificates, truststore.certificates);
+              }).then(function (result) {
+                _this.pdfInfo.tsCertVerified.push({
+                  name: truststore.name,
+                  status: result
+                });
+              });
             });
           }
         }

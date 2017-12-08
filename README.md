@@ -22,9 +22,9 @@ You can use the module as follows:
 
     const pdfvalidator = require('pdfvalidator');
     let pdf = new pdfvalidator.PDFValidator(fs.readFileSync('sample.pdf'));
-    pdf.addTrustedSigningCAs(loadCertsFromJSON('sign.json'));
-    pdf.addTrustedTimestampingCAs(loadCertsFromJSON('timestamp.json'));
-    pdf.validateDoc().then(result => console.log(result));
+    pdf.addSigningTruststore(loadTrustStoreFromJSON('sign.json'));
+    pdf.addTimestampingTruststore(loadTrustStoreFromJSON('timestamp.json'));
+    pdf.validate().then(result => console.log(result));
 
 # License
 
