@@ -136,14 +136,14 @@ function verifyCMSHash(cmsSignedSimp, signedDataBuffer) {
 function verifyChain(certificate, chain, trustedCAs) {
   if (certificate === null) return Promise.resolve(false);
 
-  var newChain = chain.splice();
-  newChain.push(certificate);
-
   return Promise.resolve().then(function () {
     var certificateChainEngine = new pkijs.CertificateChainValidationEngine({
-      certs: newChain,
-      trustedCerts: trustedCAs
+      certs: chain,
+      trustedCerts: trustedCAs.filter(function (cert) {
+        return typeof cert !== 'undefined';
+      })
     });
+    certificateChainEngine.certs.push(certificate);
 
     return certificateChainEngine.verify();
   }).then(function (result) {

@@ -7,7 +7,7 @@
 import * as pkijs from 'pkijs';
 import * as asn1js from 'asn1js';
 import * as pdfjs from './pdf.js';
-import './webcrypto'
+import './webcrypto';
 
 /**
   * A trust store.
@@ -127,14 +127,12 @@ function verifyChain(certificate, chain, trustedCAs) {
   if(certificate === null)
     return Promise.resolve(false);
 
-  const newChain = chain.splice();
-  newChain.push(certificate)
-
   return Promise.resolve().then(() => {
     const certificateChainEngine = new pkijs.CertificateChainValidationEngine({
-      certs: newChain,
-      trustedCerts: trustedCAs
+      certs: chain,
+      trustedCerts: trustedCAs.filter(cert => typeof cert !== 'undefined')
     });
+    certificateChainEngine.certs.push(certificate);
 
     return certificateChainEngine.verify();
   }).then(result => {
