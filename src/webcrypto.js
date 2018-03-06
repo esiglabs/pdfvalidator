@@ -9,4 +9,8 @@ import WebCrypto from 'node-webcrypto-ossl';
 
 /* Use openssl webcrypto polyfill for node */
 const webcrypto = new WebCrypto();
-pkijs.setEngine('OpenSSL', webcrypto, webcrypto.subtle);
+pkijs.setEngine('OpenSSL', webcrypto, new pkijs.CryptoEngine({
+  name: 'OpenSSL',
+  crypto: webcrypto,
+  subtle: webcrypto.subtle
+}));

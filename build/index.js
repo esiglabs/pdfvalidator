@@ -3,7 +3,7 @@
 Object.defineProperty(exports, "__esModule", {
   value: true
 });
-exports.PDFValidator = exports.PDFInfo = undefined;
+exports.PDFValidator = undefined;
 
 var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }(); /**
                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       * PDF Validator module
@@ -25,6 +25,10 @@ var _pdf = require('./pdf.js');
 
 var pdfjs = _interopRequireWildcard(_pdf);
 
+var _eslutils = require('eslutils');
+
+var eslutils = _interopRequireWildcard(_eslutils);
+
 require('./webcrypto');
 
 function _interopRequireWildcard(obj) { if (obj && obj.__esModule) { return obj; } else { var newObj = {}; if (obj != null) { for (var key in obj) { if (Object.prototype.hasOwnProperty.call(obj, key)) newObj[key] = obj[key]; } } newObj.default = obj; return newObj; } }
@@ -32,20 +36,71 @@ function _interopRequireWildcard(obj) { if (obj && obj.__esModule) { return obj;
 function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
 
 /**
-  * A trust store.
-  * @typedef {Object} TrustStore
-  * @property {string} name - The name of the trust store.
-  * @property {Array<pkijs.Certificate>} certificates - All the certificates
-  * contained in the trust store.
-  */
+ * A range in the file.
+ * @typedef {Object} Range
+ * @property {number} start - The start of the range.
+ * @property {number} end - The end of the range.
+ */
 
 /**
- * Trust store verification status.
- * @typedef {Object} TrustStoreStatus
- * @property {string} name - The name of the trust store.
- * @property {boolean} status - True if the certificate chains to this trust
- * store, false otherwise.
+ * A PDF signature.
+ * @typedef {Object} PDFSignature
+ * @property {pkijs.SignedData} cmsSignedSimp - A SignedData structure
+ * containing the signature
+ * @property {Array<Range>} ranges - An array of all ranges signed by this
+ * signature.
  */
+
+/**
+ * Get all signatures from a PDFDocument.
+ * @param {pdfjs.PDFJS.PDFDocument} pdf - The PDF document
+ * @return {Array<PDFSignature>} An array of PDFSignature objects describing
+ * all signatures found.
+ */
+function getSignatures(pdf) {
+  var acroForm = pdf.xref.root.get('AcroForm');
+  if (typeof acroForm === 'undefined') return [];
+
+  var sigs = [];
+  var fields = acroForm.get('Fields');
+  fields.forEach(function (field) {
+    if (pdfjs.PDFJS.isRef(field) === false) return;
+
+    var sigField = pdf.xref.fetch(field);
+    var sigFieldType = sigField.get('FT');
+    if (typeof sigFieldType === 'undefined' || sigFieldType.name !== 'Sig') return;
+
+    var v = sigField.get('V');
+    var byteRange = v.get('ByteRange');
+    var contents = v.get('Contents');
+
+    var contentLength = contents.length;
+    var contentBuffer = new ArrayBuffer(contentLength);
+    var contentView = new Uint8Array(contentBuffer);
+
+    for (var i = 0; i < contentLength; i++) {
+      contentView[i] = contents.charCodeAt(i);
+    }var asn1 = asn1js.fromBER(contentBuffer);
+
+    var cmsContentSimp = new pkijs.ContentInfo({ schema: asn1.result });
+    var cmsSignedSimp = new pkijs.SignedData({
+      schema: cmsContentSimp.content
+    });
+
+    sigs.push({
+      cmsSignedSimp: cmsSignedSimp,
+      ranges: [{
+        start: byteRange[0],
+        end: byteRange[0] + byteRange[1]
+      }, {
+        start: byteRange[2],
+        end: byteRange[2] + byteRange[3]
+      }]
+    });
+  });
+
+  return sigs;
+}
 
 /**
  * Extract the timestamp token from the unsigned attributes of the CMS
@@ -124,166 +179,113 @@ function verifyCMSHash(cmsSignedSimp, signedDataBuffer) {
 }
 
 /**
- * Verify if a certificate chains to some trusted CAs.
- * @param {pkijs.Certificate} certificate - The certificate that will be
- * checked.
- * @param {Array<pkijs.Certificate>} chain - Additional certificates in the
- * chain.
- * @param {Array<pkijs.Certificate>} trustedCAs - The trusted CAs
- * @return {Promise<boolean>} A promise that is resolved with a boolean value
- * stating if the certificate was verified or not.
+ * Validate a single signature.
+ * @param {PDFSignature} signature - The PDF signature.
+ * @param {ArrayBuffer} contents - The contents of the file.
+ * @param {eslutils.TrustStoreList} trustedSigningCAs - Trusted document
+ * signing CAs.
+ * @param {eslutils.TrustStoreList} trustedTimestampingCAs - Trusted document
+ * timestamping CAs.
+ * @param {number} id - The id of the signature.
+ * @return {Promise<eslutils.SignatureInfo>} A promise that is resolved with
+ * a SignatureInfo object containing information about the signature.
  */
-function verifyChain(certificate, chain, trustedCAs) {
-  if (certificate === null) return Promise.resolve(false);
+function validateSignature(signature, contents, trustedSigningCAs, trustedTimestampingCAs, id) {
+  var sequence = Promise.resolve();
+  var sigInfo = new eslutils.SignatureInfo(id);
 
-  return Promise.resolve().then(function () {
-    var certificateChainEngine = new pkijs.CertificateChainValidationEngine({
-      certs: chain,
-      trustedCerts: trustedCAs.filter(function (cert) {
-        return typeof cert !== 'undefined';
-      })
-    });
-    certificateChainEngine.certs.push(certificate);
-
-    return certificateChainEngine.verify();
-  }).then(function (result) {
-    return result.result;
-  }, function (result) {
-    return false;
+  var signedDataLen = 0;
+  signature.ranges.forEach(function (range) {
+    signedDataLen += range.end - range.start;
   });
-}
+  var signedData = new ArrayBuffer(signedDataLen);
+  var signedDataView = new Uint8Array(signedData);
+  var contentsView = new Uint8Array(contents);
 
-/**
- * Document information definition
- */
+  var count = 0;
+  signature.ranges.forEach(function (range) {
+    for (var i = range.start; i < range.end; i++, count++) {
+      signedDataView[count] = contentsView[i];
+    }
+  });
 
-var PDFInfo = exports.PDFInfo = function () {
-  /**
-   * Generate an empty PDFInfo object.
-   * @constructor
-   */
-  function PDFInfo() {
-    _classCallCheck(this, PDFInfo);
+  sequence = sequence.then(function () {
+    return signature.cmsSignedSimp.verify({
+      signer: 0,
+      data: signedData,
+      checkChain: false,
+      extendedMode: true
+    });
+  }).then(function (result) {
+    sigInfo.sigVerified = result.signatureVerified;
+    sigInfo.cert = result.signerCertificate;
+  }, function (result) {
+    sigInfo.sigVerified = false;
+    sigInfo.cert = result.signerCertificate;
+  });
 
-    /**
-     * @type {boolean}
-     * @description A valid PDF file.
-     */
-    this.isValid = false;
-    /**
-     * @type {boolean}
-     * @description A signed PDF file.
-     */
-    this.isSigned = false;
-    /**
-     * @type {boolean}
-     * @description Signed hash has been verified.
-     */
-    this.sigVerified = false;
-    /**
-     * @type {boolean}
-     * @description The hash corresponds to the signed data.
-     */
-    this.hashVerified = false;
-    /**
-     * @type {string}
-     * @description The algorithm that was used to hash the data.
-     */
-    this.hashAlgorithm = '';
-    /**
-     * @type {Array<TrustStoreStatus>}
-     * @description Signer certificate chains to a trusted signing CA.
-     */
-    this.signerVerified = [];
-    /**
-     * @type {boolean}
-     * @description A timestamped PDF file.
-     */
-    this.hasTS = false;
-    /**
-     * @type {boolean}
-     * @description The timestamp has been verified.
-     */
-    this.tsVerified = false;
-    /**
-     * @type {Array<TrustStoreStatus>}
-     * @description The certificate of the timestamp chains to a trusted
-     * timestamping CA.
-     */
-    this.tsCertVerified = [];
-    /**
-     * @type {pkijs.Certificate}
-     * @description The signer's certificate.
-     */
-    this.cert = null;
-    /**
-     * @type {pkijs.Certificate}
-     * @description The timestamp authority's certificate.
-     */
-    this.tsCert = null;
+  trustedSigningCAs.forEach(function (truststore) {
+    sequence = sequence.then(function () {
+      return eslutils.verifyChain(sigInfo.cert, signature.cmsSignedSimp.certificates, truststore.certificates);
+    }).then(function (result) {
+      sigInfo.signerVerified.push({
+        name: truststore.name,
+        status: result
+      });
+    });
+  });
+
+  if ('signedAttrs' in signature.cmsSignedSimp.signerInfos[0]) {
+    var hashAlgo = pkijs.getAlgorithmByOID(signature.cmsSignedSimp.signerInfos[0].digestAlgorithm.algorithmId);
+    if ('name' in hashAlgo) sigInfo.hashAlgorithm = hashAlgo.name;
+
+    sequence = sequence.then(function () {
+      return verifyCMSHash(signature.cmsSignedSimp, signedData);
+    }).then(function (result) {
+      sigInfo.hashVerified = result;
+    });
+
+    if ('unsignedAttrs' in signature.cmsSignedSimp.signerInfos[0]) {
+      var tsToken = extractTSToken(signature.cmsSignedSimp);
+
+      if (tsToken != null) {
+        sigInfo.hasTS = true;
+
+        var tsSigned = new pkijs.SignedData({ schema: tsToken.content });
+
+        sequence = sequence.then(function () {
+          return tsSigned.verify({
+            signer: 0,
+            data: signature.cmsSignedSimp.signerInfos[0].signature.valueBlock.valueHex,
+            checkChain: false,
+            extendedMode: true
+          });
+        }).then(function (result) {
+          sigInfo.tsVerified = result.signatureVerified;
+          sigInfo.tsCert = result.signerCertificate;
+        }, function (result) {
+          sigInfo.tsVerified = false;
+          sigInfo.tsCert = result.signerCertificate;
+        });
+
+        trustedTimestampingCAs.forEach(function (truststore) {
+          sequence = sequence.then(function () {
+            return eslutils.verifyChain(sigInfo.tsCert, tsSigned.certificates, truststore.certificates);
+          }).then(function (result) {
+            sigInfo.tsCertVerified.push({
+              name: truststore.name,
+              status: result
+            });
+          });
+        });
+      }
+    }
   }
 
-  /**
-   * Check if the file verified was a valid signed PDF whose signature and
-   * signed hash have been verified.
-   */
-
-
-  _createClass(PDFInfo, [{
-    key: 'isSignersVerified',
-
-
-    /**
-     * Check if the signer has been verified against a truststore. If the file is
-     * timestamped, then the timestamp signer will also be checked against another
-     * truststore.
-     * @param {string} signingTruststore - The name of the signing truststore.
-     * @param {string} timestampingTruststore - The name of the timestamping
-     * truststore.
-     * @return {boolean} True if the file was verified against both truststores,
-     * false otherwise.
-     */
-    value: function isSignersVerified(signingTruststore, timestampingTruststore) {
-      if (!this.isValid || !this.isSigned) return false;
-
-      var verified = false;
-      this.signerVerified.forEach(function (signer) {
-        if (signer.name === signingTruststore) verified = signer.status;
-      });
-      if (verified === false) return false;
-
-      if (this.hasTS) {
-        verified = false;
-        this.tsCertVerified.forEach(function (signer) {
-          if (signer.name === timestampingTruststore) verified = signer.status;
-        });
-        if (verified === false) return false;
-      }
-
-      return true;
-    }
-  }, {
-    key: 'isValidSigned',
-    get: function get() {
-      return this.isValid & this.isSigned & this.sigVerified & this.hashVerified;
-    }
-
-    /**
-     * Check if the file verified was a valid signed and timestamped PDF whose
-     * signature, signed hash and timestamp have been verified.
-     */
-
-  }, {
-    key: 'isValidSignedTimestamped',
-    get: function get() {
-      return this.isValid & this.isSigned & this.sigVerified & this.hashVerified & this.hasTS & this.tsVerified;
-    }
-  }]);
-
-  return PDFInfo;
-}();
-
-;
+  return sequence.then(function () {
+    return sigInfo;
+  });
+}
 
 /**
  * PDF Validator class
@@ -298,30 +300,30 @@ var PDFValidator = exports.PDFValidator = function () {
     _classCallCheck(this, PDFValidator);
 
     /**
-     * @type {Array<TrustStore>}
+     * @type {eslutils.TrustStoreList}
      * @description Trusted document signing CAs.
      */
-    this.trustedSigningCAs = [];
+    this.trustedSigningCAs = new eslutils.TrustStoreList();
     /**
-     * @type {Array<TrustStore>}
+     * @type {eslutils.TrustStoreList}
      * @description Trusted document timestamping CAs.
      */
-    this.trustedTimestampingCAs = [];
+    this.trustedTimestampingCAs = new eslutils.TrustStoreList();
     /**
-     * @type {pkijs.SignedData}
-     * @description The SignedData structure of the PDF signature.
+     * @type {eslutils.ValidationInfo}
+     * @description A ValidationInfo object holding the validation results.
      */
-    this.cmsSignedSimp = null;
+    this.validationInfo = new eslutils.ValidationInfo();
     /**
      * @type {ArrayBuffer}
-     * @description An ArrayBuffer holding the signed data.
+     * @description The contents of the file.
      */
-    this.signedDataBuffer = null;
+    this.buffer = buffer;
     /**
-     * @type {PDFInfo}
-     * @description A PDFInfo object holding the validation results.
+     * @type {Array<PDFSignature>}
+     * @description The signatures in the file.
      */
-    this.pdfInfo = new PDFInfo();
+    this.pdfSignatures = null;
 
     var bufferView = new Uint8Array(buffer);
 
@@ -334,44 +336,15 @@ var PDFValidator = exports.PDFValidator = function () {
       return;
     }
 
-    this.pdfInfo.isValid = true;
+    this.validationInfo.isValid = true;
 
-    var acroForm = pdf.xref.root.get('AcroForm');
-    if (typeof acroForm === 'undefined') return;
+    try {
+      this.pdfSignatures = getSignatures(pdf);
+    } catch (e) {
+      this.pdfSignatures = [];
+    }
 
-    var fields = acroForm.get('Fields');
-    if (pdfjs.PDFJS.isRef(fields[0]) === false) return;
-
-    var sigField = pdf.xref.fetch(fields[0]);
-    var sigFieldType = sigField.get('FT');
-    if (typeof sigFieldType === 'undefined' || sigFieldType.name !== 'Sig') return;
-
-    var v = sigField.get('V');
-    var byteRange = v.get('ByteRange');
-    var contents = v.get('Contents');
-
-    var contentLength = contents.length;
-    var contentBuffer = new ArrayBuffer(contentLength);
-    var contentView = new Uint8Array(contentBuffer);
-
-    for (var i = 0; i < contentLength; i++) {
-      contentView[i] = contents.charCodeAt(i);
-    }var asn1 = asn1js.fromBER(contentBuffer);
-
-    var cmsContentSimp = new pkijs.ContentInfo({ schema: asn1.result });
-    this.cmsSignedSimp = new pkijs.SignedData({
-      schema: cmsContentSimp.content
-    });
-
-    this.signedDataBuffer = new ArrayBuffer(byteRange[1] + byteRange[3]);
-    var signedDataView = new Uint8Array(this.signedDataBuffer);
-
-    var count = 0;
-    for (var _i = byteRange[0]; _i < byteRange[0] + byteRange[1]; _i++, count++) {
-      signedDataView[count] = bufferView[_i];
-    }for (var j = byteRange[2]; j < byteRange[2] + byteRange[3]; j++, count++) {
-      signedDataView[count] = bufferView[j];
-    }this.pdfInfo.isSigned = true;
+    if (this.pdfSignatures.length > 0) this.validationInfo.isSigned = true;
   }
 
   /**
@@ -383,7 +356,7 @@ var PDFValidator = exports.PDFValidator = function () {
   _createClass(PDFValidator, [{
     key: 'addSigningTruststore',
     value: function addSigningTruststore(truststore) {
-      this.trustedSigningCAs.push(truststore);
+      this.trustedSigningCAs.addTrustStore(truststore);
     }
 
     /**
@@ -394,14 +367,7 @@ var PDFValidator = exports.PDFValidator = function () {
   }, {
     key: 'removeSigningTruststore',
     value: function removeSigningTruststore(name) {
-      var idx = void 0;
-
-      for (idx = 0; idx < this.trustedSigningCAs.length; idx++) {
-        if (this.trustedSigningCAs[idx].name === name) {
-          this.trustedSigningCAs.splice(idx, 1);
-          idx--;
-        }
-      }
+      this.trustedSigningCAs.removeTrustStore(name);
     }
 
     /**
@@ -412,7 +378,7 @@ var PDFValidator = exports.PDFValidator = function () {
   }, {
     key: 'addTimestampingTruststore',
     value: function addTimestampingTruststore(truststore) {
-      this.trustedTimestampingCAs.push(truststore);
+      this.trustedTimestampingCAs.addTrustStore(truststore);
     }
 
     /**
@@ -423,14 +389,7 @@ var PDFValidator = exports.PDFValidator = function () {
   }, {
     key: 'removeTimestampingTruststore',
     value: function removeTimestampingTruststore(name) {
-      var idx = void 0;
-
-      for (idx = 0; idx < this.trustedTimestampingCAs.length; idx++) {
-        if (this.trustedTimestampingCAs[idx].name === name) {
-          this.trustedTimestampingCAs.splice(idx, 1);
-          idx--;
-        }
-      }
+      this.trustedTimestampingCAs.removeTrustStore(name);
     }
 
     /**
@@ -446,85 +405,24 @@ var PDFValidator = exports.PDFValidator = function () {
 
       var sequence = Promise.resolve();
 
-      if (this.pdfInfo.isValid === false || this.pdfInfo.isSigned === false) return sequence.then(function () {
-        return _this.pdfInfo;
+      if (this.validationInfo.isValid === false || this.validationInfo.isSigned === false) return sequence.then(function () {
+        return _this.validationInfo;
       });
 
-      sequence = sequence.then(function () {
-        return _this.cmsSignedSimp.verify({
-          signer: 0,
-          data: _this.signedDataBuffer,
-          checkChain: false,
-          extendedMode: true
-        });
-      }).then(function (result) {
-        _this.pdfInfo.sigVerified = result.signatureVerified;
-        _this.pdfInfo.cert = result.signerCertificate;
-      }, function (result) {
-        _this.pdfInfo.sigVerified = false;
-        _this.pdfInfo.cert = result.signerCertificate;
-      });
-
-      this.trustedSigningCAs.forEach(function (truststore) {
+      var _loop = function _loop(i) {
         sequence = sequence.then(function () {
-          return verifyChain(_this.pdfInfo.cert, _this.cmsSignedSimp.certificates, truststore.certificates);
+          return validateSignature(_this.pdfSignatures[i], _this.buffer, _this.trustedSigningCAs, _this.trustedTimestampingCAs, i);
         }).then(function (result) {
-          _this.pdfInfo.signerVerified.push({
-            name: truststore.name,
-            status: result
-          });
+          _this.validationInfo.signatures.push(result);
         });
-      });
+      };
 
-      if ('signedAttrs' in this.cmsSignedSimp.signerInfos[0]) {
-        var hashAlgo = pkijs.getAlgorithmByOID(this.cmsSignedSimp.signerInfos[0].digestAlgorithm.algorithmId);
-        if ('name' in hashAlgo) this.pdfInfo.hashAlgorithm = hashAlgo.name;
-
-        sequence = sequence.then(function () {
-          return verifyCMSHash(_this.cmsSignedSimp, _this.signedDataBuffer);
-        }).then(function (result) {
-          _this.pdfInfo.hashVerified = result;
-        });
-
-        if ('unsignedAttrs' in this.cmsSignedSimp.signerInfos[0]) {
-          var tsToken = extractTSToken(this.cmsSignedSimp);
-
-          if (tsToken != null) {
-            this.pdfInfo.hasTS = true;
-
-            var tsSigned = new pkijs.SignedData({ schema: tsToken.content });
-
-            sequence = sequence.then(function () {
-              return tsSigned.verify({
-                signer: 0,
-                data: _this.cmsSignedSimp.signerInfos[0].signature.valueBlock.valueHex,
-                checkChain: false,
-                extendedMode: true
-              });
-            }).then(function (result) {
-              _this.pdfInfo.tsVerified = result.signatureVerified;
-              _this.pdfInfo.tsCert = result.signerCertificate;
-            }, function (result) {
-              _this.pdfInfo.tsVerified = false;
-              _this.pdfInfo.tsCert = result.signerCertificate;
-            });
-
-            this.trustedTimestampingCAs.forEach(function (truststore) {
-              sequence = sequence.then(function () {
-                return verifyChain(_this.pdfInfo.tsCert, tsSigned.certificates, truststore.certificates);
-              }).then(function (result) {
-                _this.pdfInfo.tsCertVerified.push({
-                  name: truststore.name,
-                  status: result
-                });
-              });
-            });
-          }
-        }
+      for (var i = 0; i < this.pdfSignatures.length; i++) {
+        _loop(i);
       }
 
       return sequence.then(function () {
-        return _this.pdfInfo;
+        return _this.validationInfo;
       });
     }
   }]);

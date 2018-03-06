@@ -1,6 +1,6 @@
 {
   "name": "pdfvalidator",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "A signed PDF validator",
   "main": "build/index.js",
   "scripts": {
@@ -27,13 +27,20 @@
   "homepage": "https://github.com/fotisl/pdfvalidator#readme",
   "dependencies": {
     "asn1js": "2.0.15",
-    "pkijs": "2.0.67",
-    "node-webcrypto-ossl": "1.0.31"
+    "pkijs": "2.1.12",
+    "node-webcrypto-ossl": "1.0.31",
+    "eslutils": "git+ssh://git@github.com/fotisl/eslutils.git"
   },
   "devDependencies": {
     "babel-cli": "latest",
-    "babel-preset-es2015": "latest",
-    "jsdoc": "3.5.5"
+    "babel-preset-env": "latest",
+    "jsdoc": "3.5.5",
+    "eslint": "4.11.0",
+    "eslint-config-standard": "10.2.1",
+    "eslint-plugin-import": "2.8.0",
+    "eslint-plugin-node": "5.2.1",
+    "eslint-plugin-promise": "3.6.0",
+    "eslint-plugin-standard": "3.0.1"
   },
   "browser": {
     "./build/webcrypto.js": false

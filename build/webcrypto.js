@@ -20,5 +20,9 @@ function _interopRequireWildcard(obj) { if (obj && obj.__esModule) { return obj;
  * By Fotis Loukos <me@fotisl.com>
  */
 var webcrypto = new _nodeWebcryptoOssl2.default();
-pkijs.setEngine('OpenSSL', webcrypto, webcrypto.subtle);
+pkijs.setEngine('OpenSSL', webcrypto, new pkijs.CryptoEngine({
+  name: 'OpenSSL',
+  crypto: webcrypto,
+  subtle: webcrypto.subtle
+}));
 //# sourceMappingURL=webcrypto.js.map
