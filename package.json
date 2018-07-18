@@ -34,7 +34,7 @@
   "devDependencies": {
     "babel-cli": "latest",
     "babel-preset-env": "latest",
-    "jsdoc": "3.5.5",
+    "jsdoc": "latest",
     "eslint": "4.11.0",
     "eslint-config-standard": "10.2.1",
     "eslint-plugin-import": "2.8.0",
