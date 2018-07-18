@@ -11,7 +11,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/fotisl/pdfvalidator.git"
+    "url": "git+https://github.com/esiglabs/pdfvalidator.git"
   },
   "keywords": [
     "PKI",
@@ -22,9 +22,9 @@
   "author": "Fotis Loukos <me@fotisl.com>",
   "license": "BSD-3-Clause",
   "bugs": {
-    "url": "https://github.com/fotisl/pdfvalidator/issues"
+    "url": "https://github.com/esiglabs/pdfvalidator/issues"
   },
-  "homepage": "https://github.com/fotisl/pdfvalidator#readme",
+  "homepage": "https://github.com/esiglabs/pdfvalidator#readme",
   "dependencies": {
     "asn1js": "2.0.15",
     "pkijs": "2.1.12",
