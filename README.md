@@ -28,7 +28,7 @@ You can use the module as follows:
 
 # License
 
-Copyright (c) 2017, Fotis Loukos
+Copyright (c) 2017-2018, Fotis Loukos
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
