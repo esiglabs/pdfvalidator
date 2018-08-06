@@ -29,7 +29,7 @@
     "asn1js": "2.0.15",
     "pkijs": "2.1.12",
     "node-webcrypto-ossl": "1.0.31",
-    "eslutils": "esiglabs/eslutils"
+    "eslutils": "0.1.0"
   },
   "devDependencies": {
     "babel-cli": "latest",
