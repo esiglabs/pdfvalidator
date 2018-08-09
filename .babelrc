@@ -1,4 +1,7 @@
 {
   "compact": "false",
-  "presets": ["env"]
+  "presets": ["env"],
+  "ignore": [
+    "src/pdf.js"
+  ]
 }
