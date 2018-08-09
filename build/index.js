@@ -52,7 +52,7 @@ function _classCallCheck(instance, Constructor) { if (!(instance instanceof Cons
  */
 
 var PDFJS = void 0;
-if ('PDFJS' in window) PDFJS = window.PDFJS;else PDFJS = pdfjs.PDFJS;
+if (typeof window === 'undefined') PDFJS = pdfjs.PDFJS;else PDFJS = window.PDFJS;
 
 /**
  * Get all signatures from a PDFDocument.
