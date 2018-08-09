@@ -26,6 +26,12 @@ import './webcrypto';
  * signature.
  */
 
+let PDFJS;
+if('PDFJS' in window)
+  PDFJS = window.PDFJS;
+else
+  PDFJS = pdfjs.PDFJS;
+
 /**
  * Get all signatures from a PDFDocument.
  * @param {pdfjs.PDFJS.PDFDocument} pdf - The PDF document
@@ -40,7 +46,7 @@ function getSignatures(pdf) {
   const sigs = [];
   const fields = acroForm.get('Fields');
   fields.forEach(field => {
-    if(pdfjs.PDFJS.isRef(field) === false)
+    if(PDFJS.isRef(field) === false)
       return;
 
     const sigField = pdf.xref.fetch(field);
@@ -315,7 +321,7 @@ export class PDFValidator {
 
     const bufferView = new Uint8Array(buffer);
 
-    const pdf = new pdfjs.PDFJS.PDFDocument(null, bufferView, null);
+    const pdf = new PDFJS.PDFDocument(null, bufferView, null);
 
     try {
       pdf.parseStartXRef();

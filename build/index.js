@@ -51,6 +51,9 @@ function _classCallCheck(instance, Constructor) { if (!(instance instanceof Cons
  * signature.
  */
 
+var PDFJS = void 0;
+if ('PDFJS' in window) PDFJS = window.PDFJS;else PDFJS = pdfjs.PDFJS;
+
 /**
  * Get all signatures from a PDFDocument.
  * @param {pdfjs.PDFJS.PDFDocument} pdf - The PDF document
@@ -64,7 +67,7 @@ function getSignatures(pdf) {
   var sigs = [];
   var fields = acroForm.get('Fields');
   fields.forEach(function (field) {
-    if (pdfjs.PDFJS.isRef(field) === false) return;
+    if (PDFJS.isRef(field) === false) return;
 
     var sigField = pdf.xref.fetch(field);
     var sigFieldType = sigField.get('FT');
@@ -327,7 +330,7 @@ var PDFValidator = exports.PDFValidator = function () {
 
     var bufferView = new Uint8Array(buffer);
 
-    var pdf = new pdfjs.PDFJS.PDFDocument(null, bufferView, null);
+    var pdf = new PDFJS.PDFDocument(null, bufferView, null);
 
     try {
       pdf.parseStartXRef();
