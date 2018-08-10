@@ -233,12 +233,12 @@ function validateSignature(signature, contents, trustedSigningCAs,
     });
   });
 
-  if('signedAttrs' in signature.cmsSignedSimp.signerInfos[0]) {
-    const hashAlgo = pkijs.getAlgorithmByOID(
-      signature.cmsSignedSimp.signerInfos[0].digestAlgorithm.algorithmId);
-    if('name' in hashAlgo)
-      sigInfo.hashAlgorithm = hashAlgo.name;
+  const hashAlgo = pkijs.getAlgorithmByOID(
+    signature.cmsSignedSimp.signerInfos[0].digestAlgorithm.algorithmId);
+  if('name' in hashAlgo)
+    sigInfo.hashAlgorithm = hashAlgo.name;
 
+  if('signedAttrs' in signature.cmsSignedSimp.signerInfos[0]) {
     sequence = sequence.then(() => {
       return verifyCMSHash(signature.cmsSignedSimp, signedData);
     }).then((result) => {
@@ -279,6 +279,15 @@ function validateSignature(signature, contents, trustedSigningCAs,
         });
       }
     }
+  } else {
+    /*
+     * If there are no signed attributes, and the hash is computed just from
+     * the original document, then we assume the signer calculated the correct
+     * hash if the signature is correct.
+     */
+    sequence = sequence.then(() => {
+      sigInfo.hashVerified = sigInfo.sigVerified;
+    });
   }
 
   return sequence.then(() => sigInfo);
