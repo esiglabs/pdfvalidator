@@ -29,7 +29,7 @@
   "homepage": "https://github.com/esiglabs/pdfvalidator#readme",
   "dependencies": {
     "asn1js": "2.0.15",
-    "eslutils": "0.1.0",
+    "eslutils": "^1.1.1",
     "node-webcrypto-ossl": "1.0.31",
     "pkijs": "^2.1.66"
   },
