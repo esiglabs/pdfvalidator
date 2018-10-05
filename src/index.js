@@ -222,6 +222,14 @@ function validateSignature(signature, contents, trustedSigningCAs,
     sigInfo.cert = result.signerCertificate;
   });
 
+  sequence = sequence.then(() => {
+    signature.cmsSignedSimp.certificates.forEach(cert => {
+      const rawCert = cert.toSchema().toBER(false);
+      const asn1 = asn1js.fromBER(rawCert);
+      sigInfo.certBundle.push(new pkijs.Certificate({ schema: asn1.result }));
+    });
+  });
+
   trustedSigningCAs.forEach(truststore => {
     sequence = sequence.then(() => eslutils.verifyChain(sigInfo.cert,
       signature.cmsSignedSimp.certificates, truststore.certificates)
@@ -265,6 +273,14 @@ function validateSignature(signature, contents, trustedSigningCAs,
         }, result => {
           sigInfo.tsVerified = false;
           sigInfo.tsCert = result.signerCertificate;
+        });
+
+        sequence = sequence.then(() => {
+          tsSigned.certificates.forEach(cert => {
+            const rawCert = cert.toSchema().toBER(false);
+            const asn1 = asn1js.fromBER(rawCert);
+            sigInfo.tsCertBundle.push(new pkijs.Certificate({ schema: asn1.result }));
+          });
         });
 
         trustedTimestampingCAs.forEach(truststore => {
