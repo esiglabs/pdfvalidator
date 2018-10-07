@@ -15,19 +15,13 @@ var _createClass = function () { function defineProperties(target, props) { for 
 
 var _pkijs = require('pkijs');
 
-var pkijs = _interopRequireWildcard(_pkijs);
-
 var _asn1js = require('asn1js');
-
-var asn1js = _interopRequireWildcard(_asn1js);
 
 var _pdf = require('./pdf.js');
 
 var pdfjs = _interopRequireWildcard(_pdf);
 
 var _eslutils = require('eslutils');
-
-var eslutils = _interopRequireWildcard(_eslutils);
 
 require('./webcrypto');
 
@@ -83,10 +77,10 @@ function getSignatures(pdf) {
 
     for (var i = 0; i < contentLength; i++) {
       contentView[i] = contents.charCodeAt(i);
-    }var asn1 = asn1js.fromBER(contentBuffer);
+    }var asn1 = (0, _asn1js.fromBER)(contentBuffer);
 
-    var cmsContentSimp = new pkijs.ContentInfo({ schema: asn1.result });
-    var cmsSignedSimp = new pkijs.SignedData({
+    var cmsContentSimp = new _pkijs.ContentInfo({ schema: asn1.result });
+    var cmsSignedSimp = new _pkijs.SignedData({
       schema: cmsContentSimp.content
     });
 
@@ -128,8 +122,8 @@ function extractTSToken(cmsSignedSimp) {
   var tstoken = null;
 
   try {
-    var asn1 = asn1js.fromBER(tsattr.values[0].valueBeforeDecode);
-    tstoken = new pkijs.ContentInfo({ schema: asn1.result });
+    var asn1 = (0, _asn1js.fromBER)(tsattr.values[0].valueBeforeDecode);
+    tstoken = new _pkijs.ContentInfo({ schema: asn1.result });
   } catch (ex) {}
 
   return tstoken;
@@ -145,11 +139,11 @@ function extractTSToken(cmsSignedSimp) {
 function verifyCMSHash(cmsSignedSimp, signedDataBuffer) {
   if (cmsSignedSimp === null || signedDataBuffer === null) return Promise.resolve(false);
 
-  var hashAlgo = pkijs.getAlgorithmByOID(cmsSignedSimp.signerInfos[0].digestAlgorithm.algorithmId);
+  var hashAlgo = (0, _pkijs.getAlgorithmByOID)(cmsSignedSimp.signerInfos[0].digestAlgorithm.algorithmId);
   if (!('name' in hashAlgo)) return Promise.resolve(false);
 
   return Promise.resolve().then(function () {
-    var crypto = pkijs.getCrypto();
+    var crypto = (0, _pkijs.getCrypto)();
 
     return crypto.digest({ name: hashAlgo.name }, new Uint8Array(signedDataBuffer));
   }).then(function (result) {
@@ -195,7 +189,7 @@ function verifyCMSHash(cmsSignedSimp, signedDataBuffer) {
  */
 function validateSignature(signature, contents, trustedSigningCAs, trustedTimestampingCAs, id) {
   var sequence = Promise.resolve();
-  var sigInfo = new eslutils.SignatureInfo(id);
+  var sigInfo = new _eslutils.SignatureInfo(id);
 
   var signedDataLen = 0;
   signature.ranges.forEach(function (range) {
@@ -230,14 +224,14 @@ function validateSignature(signature, contents, trustedSigningCAs, trustedTimest
   sequence = sequence.then(function () {
     signature.cmsSignedSimp.certificates.forEach(function (cert) {
       var rawCert = cert.toSchema().toBER(false);
-      var asn1 = asn1js.fromBER(rawCert);
-      sigInfo.certBundle.push(new pkijs.Certificate({ schema: asn1.result }));
+      var asn1 = (0, _asn1js.fromBER)(rawCert);
+      sigInfo.certBundle.push(new _pkijs.Certificate({ schema: asn1.result }));
     });
   });
 
   trustedSigningCAs.forEach(function (truststore) {
     sequence = sequence.then(function () {
-      return eslutils.verifyChain(sigInfo.cert, signature.cmsSignedSimp.certificates, truststore.certificates);
+      return (0, _eslutils.verifyChain)(sigInfo.cert, signature.cmsSignedSimp.certificates, truststore.certificates);
     }).then(function (result) {
       sigInfo.signerVerified.push({
         name: truststore.name,
@@ -246,7 +240,7 @@ function validateSignature(signature, contents, trustedSigningCAs, trustedTimest
     });
   });
 
-  var hashAlgo = pkijs.getAlgorithmByOID(signature.cmsSignedSimp.signerInfos[0].digestAlgorithm.algorithmId);
+  var hashAlgo = (0, _pkijs.getAlgorithmByOID)(signature.cmsSignedSimp.signerInfos[0].digestAlgorithm.algorithmId);
   if ('name' in hashAlgo) sigInfo.hashAlgorithm = hashAlgo.name;
 
   if ('signedAttrs' in signature.cmsSignedSimp.signerInfos[0]) {
@@ -262,41 +256,45 @@ function validateSignature(signature, contents, trustedSigningCAs, trustedTimest
       if (tsToken != null) {
         sigInfo.hasTS = true;
 
-        var tsSigned = new pkijs.SignedData({ schema: tsToken.content });
+        try {
+          var tsSigned = new _pkijs.SignedData({ schema: tsToken.content });
 
-        sequence = sequence.then(function () {
-          return tsSigned.verify({
-            signer: 0,
-            data: signature.cmsSignedSimp.signerInfos[0].signature.valueBlock.valueHex,
-            checkChain: false,
-            extendedMode: true
-          });
-        }).then(function (result) {
-          sigInfo.tsVerified = result.signatureVerified;
-          sigInfo.tsCert = result.signerCertificate;
-        }, function (result) {
-          sigInfo.tsVerified = false;
-          sigInfo.tsCert = result.signerCertificate;
-        });
-
-        sequence = sequence.then(function () {
-          tsSigned.certificates.forEach(function (cert) {
-            var rawCert = cert.toSchema().toBER(false);
-            var asn1 = asn1js.fromBER(rawCert);
-            sigInfo.tsCertBundle.push(new pkijs.Certificate({ schema: asn1.result }));
-          });
-        });
-
-        trustedTimestampingCAs.forEach(function (truststore) {
           sequence = sequence.then(function () {
-            return eslutils.verifyChain(sigInfo.tsCert, tsSigned.certificates, truststore.certificates);
+            return tsSigned.verify({
+              signer: 0,
+              data: signature.cmsSignedSimp.signerInfos[0].signature.valueBlock.valueHex,
+              checkChain: false,
+              extendedMode: true
+            });
           }).then(function (result) {
-            sigInfo.tsCertVerified.push({
-              name: truststore.name,
-              status: result
+            sigInfo.tsVerified = result.signatureVerified;
+            sigInfo.tsCert = result.signerCertificate;
+          }, function (result) {
+            sigInfo.tsVerified = false;
+            sigInfo.tsCert = result.signerCertificate;
+          });
+
+          sequence = sequence.then(function () {
+            tsSigned.certificates.forEach(function (cert) {
+              var rawCert = cert.toSchema().toBER(false);
+              var asn1 = (0, _asn1js.fromBER)(rawCert);
+              sigInfo.tsCertBundle.push(new _pkijs.Certificate({ schema: asn1.result }));
             });
           });
-        });
+
+          trustedTimestampingCAs.forEach(function (truststore) {
+            sequence = sequence.then(function () {
+              return (0, _eslutils.verifyChain)(sigInfo.tsCert, tsSigned.certificates, truststore.certificates);
+            }).then(function (result) {
+              sigInfo.tsCertVerified.push({
+                name: truststore.name,
+                status: result
+              });
+            });
+          });
+        } catch (ex) {
+          sigInfo.hasTS = false;
+        }
       }
     }
   } else {
@@ -331,17 +329,17 @@ var PDFValidator = exports.PDFValidator = function () {
      * @type {eslutils.TrustStoreList}
      * @description Trusted document signing CAs.
      */
-    this.trustedSigningCAs = new eslutils.TrustStoreList();
+    this.trustedSigningCAs = new _eslutils.TrustStoreList();
     /**
      * @type {eslutils.TrustStoreList}
      * @description Trusted document timestamping CAs.
      */
-    this.trustedTimestampingCAs = new eslutils.TrustStoreList();
+    this.trustedTimestampingCAs = new _eslutils.TrustStoreList();
     /**
      * @type {eslutils.ValidationInfo}
      * @description A ValidationInfo object holding the validation results.
      */
-    this.validationInfo = new eslutils.ValidationInfo();
+    this.validationInfo = new _eslutils.ValidationInfo();
     /**
      * @type {ArrayBuffer}
      * @description The contents of the file.

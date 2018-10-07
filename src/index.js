@@ -4,10 +4,10 @@
  * By Fotis Loukos <me@fotisl.com>
  * @module pdfvalidator
  */
-import * as pkijs from 'pkijs';
-import * as asn1js from 'asn1js';
+import { Certificate, ContentInfo, SignedData, getAlgorithmByOID, getCrypto } from 'pkijs';
+import { fromBER } from 'asn1js';
 import * as pdfjs from './pdf.js';
-import * as eslutils from 'eslutils';
+import { SignatureInfo, TrustStoreList, ValidationInfo, verifyChain } from 'eslutils';
 import './webcrypto';
 
 /**
@@ -65,10 +65,10 @@ function getSignatures(pdf) {
     for(let i = 0; i < contentLength; i++)
       contentView[i] = contents.charCodeAt(i);
 
-    const asn1 = asn1js.fromBER(contentBuffer);
+    const asn1 = fromBER(contentBuffer);
 
-    const cmsContentSimp = new pkijs.ContentInfo({ schema: asn1.result });
-    const cmsSignedSimp = new pkijs.SignedData({
+    const cmsContentSimp = new ContentInfo({ schema: asn1.result });
+    const cmsSignedSimp = new SignedData({
       schema: cmsContentSimp.content
     });
 
@@ -117,8 +117,8 @@ function extractTSToken(cmsSignedSimp) {
   let tstoken = null;
 
   try {
-    let asn1 = asn1js.fromBER(tsattr.values[0].valueBeforeDecode);
-    tstoken = new pkijs.ContentInfo({schema: asn1.result});
+    let asn1 = fromBER(tsattr.values[0].valueBeforeDecode);
+    tstoken = new ContentInfo({schema: asn1.result});
   } catch(ex) {
   }
 
@@ -136,13 +136,13 @@ function verifyCMSHash(cmsSignedSimp, signedDataBuffer) {
   if((cmsSignedSimp === null) || (signedDataBuffer === null))
     return Promise.resolve(false);
 
-  const hashAlgo = pkijs.getAlgorithmByOID(
+  const hashAlgo = getAlgorithmByOID(
     cmsSignedSimp.signerInfos[0].digestAlgorithm.algorithmId);
   if(!('name' in hashAlgo))
     return Promise.resolve(false);
 
   return Promise.resolve().then(() => {
-    const crypto = pkijs.getCrypto();
+    const crypto = getCrypto();
 
     return crypto.digest({ name: hashAlgo.name },
       new Uint8Array(signedDataBuffer));
@@ -193,7 +193,7 @@ function verifyCMSHash(cmsSignedSimp, signedDataBuffer) {
 function validateSignature(signature, contents, trustedSigningCAs,
   trustedTimestampingCAs, id) {
   let sequence = Promise.resolve();
-  const sigInfo = new eslutils.SignatureInfo(id);
+  const sigInfo = new SignatureInfo(id);
 
   let signedDataLen = 0;
   signature.ranges.forEach(range => {
@@ -225,13 +225,13 @@ function validateSignature(signature, contents, trustedSigningCAs,
   sequence = sequence.then(() => {
     signature.cmsSignedSimp.certificates.forEach(cert => {
       const rawCert = cert.toSchema().toBER(false);
-      const asn1 = asn1js.fromBER(rawCert);
-      sigInfo.certBundle.push(new pkijs.Certificate({ schema: asn1.result }));
+      const asn1 = fromBER(rawCert);
+      sigInfo.certBundle.push(new Certificate({ schema: asn1.result }));
     });
   });
 
   trustedSigningCAs.forEach(truststore => {
-    sequence = sequence.then(() => eslutils.verifyChain(sigInfo.cert,
+    sequence = sequence.then(() => verifyChain(sigInfo.cert,
       signature.cmsSignedSimp.certificates, truststore.certificates)
     ).then(result => {
       sigInfo.signerVerified.push({
@@ -241,7 +241,7 @@ function validateSignature(signature, contents, trustedSigningCAs,
     });
   });
 
-  const hashAlgo = pkijs.getAlgorithmByOID(
+  const hashAlgo = getAlgorithmByOID(
     signature.cmsSignedSimp.signerInfos[0].digestAlgorithm.algorithmId);
   if('name' in hashAlgo)
     sigInfo.hashAlgorithm = hashAlgo.name;
@@ -260,7 +260,7 @@ function validateSignature(signature, contents, trustedSigningCAs,
         sigInfo.hasTS = true;
 
         try {
-          const tsSigned = new pkijs.SignedData({ schema: tsToken.content });
+          const tsSigned = new SignedData({ schema: tsToken.content });
 
           sequence = sequence.then(() => tsSigned.verify({
             signer: 0,
@@ -279,13 +279,13 @@ function validateSignature(signature, contents, trustedSigningCAs,
           sequence = sequence.then(() => {
             tsSigned.certificates.forEach(cert => {
               const rawCert = cert.toSchema().toBER(false);
-              const asn1 = asn1js.fromBER(rawCert);
-              sigInfo.tsCertBundle.push(new pkijs.Certificate({ schema: asn1.result }));
+              const asn1 = fromBER(rawCert);
+              sigInfo.tsCertBundle.push(new Certificate({ schema: asn1.result }));
             });
           });
 
           trustedTimestampingCAs.forEach(truststore => {
-            sequence = sequence.then(() => eslutils.verifyChain(sigInfo.tsCert,
+            sequence = sequence.then(() => verifyChain(sigInfo.tsCert,
               tsSigned.certificates, truststore.certificates)
             ).then(result => {
               sigInfo.tsCertVerified.push({
@@ -326,17 +326,17 @@ export class PDFValidator {
      * @type {eslutils.TrustStoreList}
      * @description Trusted document signing CAs.
      */
-    this.trustedSigningCAs = new eslutils.TrustStoreList();
+    this.trustedSigningCAs = new TrustStoreList();
     /**
      * @type {eslutils.TrustStoreList}
      * @description Trusted document timestamping CAs.
      */
-    this.trustedTimestampingCAs = new eslutils.TrustStoreList();
+    this.trustedTimestampingCAs = new TrustStoreList();
     /**
      * @type {eslutils.ValidationInfo}
      * @description A ValidationInfo object holding the validation results.
      */
-    this.validationInfo = new eslutils.ValidationInfo();
+    this.validationInfo = new ValidationInfo();
     /**
      * @type {ArrayBuffer}
      * @description The contents of the file.
