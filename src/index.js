@@ -259,40 +259,44 @@ function validateSignature(signature, contents, trustedSigningCAs,
       if(tsToken != null) {
         sigInfo.hasTS = true;
 
-        const tsSigned = new pkijs.SignedData({ schema: tsToken.content });
+        try {
+          const tsSigned = new pkijs.SignedData({ schema: tsToken.content });
 
-        sequence = sequence.then(() => tsSigned.verify({
-          signer: 0,
-          data: signature.cmsSignedSimp.signerInfos[0].signature.valueBlock
-            .valueHex,
-          checkChain: false,
-          extendedMode: true
-        })).then(result => {
-          sigInfo.tsVerified = result.signatureVerified;
-          sigInfo.tsCert = result.signerCertificate;
-        }, result => {
-          sigInfo.tsVerified = false;
-          sigInfo.tsCert = result.signerCertificate;
-        });
-
-        sequence = sequence.then(() => {
-          tsSigned.certificates.forEach(cert => {
-            const rawCert = cert.toSchema().toBER(false);
-            const asn1 = asn1js.fromBER(rawCert);
-            sigInfo.tsCertBundle.push(new pkijs.Certificate({ schema: asn1.result }));
+          sequence = sequence.then(() => tsSigned.verify({
+            signer: 0,
+            data: signature.cmsSignedSimp.signerInfos[0].signature.valueBlock
+              .valueHex,
+            checkChain: false,
+            extendedMode: true
+          })).then(result => {
+            sigInfo.tsVerified = result.signatureVerified;
+            sigInfo.tsCert = result.signerCertificate;
+          }, result => {
+            sigInfo.tsVerified = false;
+            sigInfo.tsCert = result.signerCertificate;
           });
-        });
 
-        trustedTimestampingCAs.forEach(truststore => {
-          sequence = sequence.then(() => eslutils.verifyChain(sigInfo.tsCert,
-            tsSigned.certificates, truststore.certificates)
-          ).then(result => {
-            sigInfo.tsCertVerified.push({
-              name: truststore.name,
-              status: result
+          sequence = sequence.then(() => {
+            tsSigned.certificates.forEach(cert => {
+              const rawCert = cert.toSchema().toBER(false);
+              const asn1 = asn1js.fromBER(rawCert);
+              sigInfo.tsCertBundle.push(new pkijs.Certificate({ schema: asn1.result }));
             });
           });
-        });
+
+          trustedTimestampingCAs.forEach(truststore => {
+            sequence = sequence.then(() => eslutils.verifyChain(sigInfo.tsCert,
+              tsSigned.certificates, truststore.certificates)
+            ).then(result => {
+              sigInfo.tsCertVerified.push({
+                name: truststore.name,
+                status: result
+              });
+            });
+          });
+        } catch(ex) {
+          sigInfo.hasTS = false;
+        }
       }
     }
   } else {
